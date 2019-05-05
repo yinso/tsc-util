@@ -1,0 +1,42 @@
+{
+  "name": "tsc-util",
+  "version": "1.0.0",
+  "description": "Small utility to wrap around TypeScript compiler to deal with declaration and js files",
+  "main": "bin/tsc.js",
+  "bin": {
+    "tsc-util": "bin/tsc.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yinso/tsc-util.git"
+  },
+  "keywords": [
+    "tsc",
+    "declaration",
+    "compiler"
+  ],
+  "author": "Yinso Chen <yinso.chen@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yinso/tsc-util/issues"
+  },
+  "homepage": "https://github.com/yinso/tsc-util#readme",
+  "devDependencies": {
+    "@types/bluebird": "^3.5.26",
+    "@types/fs-extra-promise": "^1.0.7",
+    "@types/glob": "^7.1.1",
+    "@types/yargs": "^13.0.0",
+    "mocha": "^6.1.4",
+    "mocha-typescript": "^1.1.17",
+    "typescript": "^3.4.5"
+  },
+  "dependencies": {
+    "bluebird": "^3.5.4",
+    "fs-extra-promise": "^1.0.1",
+    "glob": "^7.1.3",
+    "yargs": "^13.2.2"
+  }
+}
