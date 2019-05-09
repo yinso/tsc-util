@@ -7,7 +7,7 @@
     "tsc-util": "bin/tsc.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./node_modules/.bin/mocha --recursive"
   },
   "repository": {
     "type": "git",
@@ -30,13 +30,13 @@
     "@types/glob": "^7.1.1",
     "@types/yargs": "^13.0.0",
     "mocha": "^6.1.4",
-    "mocha-typescript": "^1.1.17",
-    "typescript": "^3.4.5"
+    "mocha-typescript": "^1.1.17"
   },
   "dependencies": {
     "bluebird": "^3.5.4",
     "fs-extra-promise": "^1.0.1",
     "glob": "^7.1.3",
+    "typescript": "^3.0.3",
     "yargs": "^13.2.2"
   }
 }
