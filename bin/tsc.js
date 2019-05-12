@@ -8,11 +8,15 @@ const argv = yargs
             describe: 'Incrementally compile the TypeScript files.',
             type: 'boolean',
             default: false
+        },
+        logLevel: {
+            alias: 'l',
+            describe: 'Specify the log level',
+            choices: [ 'error', 'warn', 'info', 'debug', 'trace' ],
+            default: 'info'
         }
     })
     .help()
     .argv;
 
 main.run(argv)
-    .then(console.log)
-    .catch(console.error);

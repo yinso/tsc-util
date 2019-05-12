@@ -5,6 +5,7 @@ import * as fs from 'fs-extra-promise';
 import * as path from 'path';
 import * as ts from 'typescript';
 import * as tsConfig from './tsconfig';
+import * as log from './logger';
 
 interface TscRunner {
     // this would just do one thing.
@@ -13,12 +14,56 @@ interface TscRunner {
 
 interface TscRunnerOptions {
     config : tsConfig.TsConfig;
+    logger : log.ILogService;
 }
 
-class BatchTscRunner implements TscRunner {
+abstract class BaseTscRunner implements TscRunner {
     readonly config : tsConfig.TsConfig;
+    readonly logger : log.ILogService;
     constructor(options : TscRunnerOptions) {
         this.config = options.config;
+        this.logger = options.logger;
+        this._reportDiagnostic = this._reportDiagnostic.bind(this)
+    }
+
+    abstract run() : Promise<void>;
+
+    copyFile(fromPath : string, toPath : string) : Promise<void> {
+        this.logger.debug({
+            method: 'copyFile',
+            args: [ fromPath, toPath ]
+        })
+        return fs.mkdirpAsync(path.dirname(toPath))
+            .then(() => fs.copyAsync(fromPath, toPath))
+    }
+
+    _reportDiagnostic(diagnostic : ts.Diagnostic) {
+        if (diagnostic.file) {
+            let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
+                diagnostic.start!
+            );
+            let message = ts.flattenDiagnosticMessageText(
+                diagnostic.messageText,
+                "\n"
+            );
+            this.logger.error({
+                fileName: diagnostic.file.fileName,
+                line,
+                character,
+                message
+            })
+        } else {
+            this.logger.error({
+                message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
+            })
+        }
+    }
+}
+
+class BatchTscRunner extends BaseTscRunner {
+    constructor(options : TscRunnerOptions) {
+        super(options);
+        this._reportDiagnostics = this._reportDiagnostics.bind(this);
     }
 
     private _batchCompile() : Promise<void> {
@@ -30,7 +75,7 @@ class BatchTscRunner implements TscRunner {
                 .getPreEmitDiagnostics(program)
                 .concat(emitResult.diagnostics);
         })
-        .then(reportDiagnostics)
+        .then(this._reportDiagnostics)
 
     }
 
@@ -40,7 +85,7 @@ class BatchTscRunner implements TscRunner {
                 .then((declPaths) => {
                     return Promise.map(declPaths, (fromPath) => {
                         let outPath = this.config.toOutPath(fromPath);
-                        return copyFile(fromPath, outPath)
+                        return this.copyFile(fromPath, outPath)
                     })
                         .then(() => {})
                 })
@@ -54,16 +99,19 @@ class BatchTscRunner implements TscRunner {
         return this._batchCompile()
             .then(() => this._batchJsAndDTs())
     }
+
+    _reportDiagnostics(all : ts.Diagnostic[]) {
+        all.forEach((diag) => this._reportDiagnostic(diag));
+    }
 }
 
-class WatchTscRunner<T extends ts.BuilderProgram> implements TscRunner {
-    readonly config : tsConfig.TsConfig;
+class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     private readonly _formatHost : ts.FormatDiagnosticsHost;
     private _watchHost !: ts.WatchCompilerHostOfFilesAndCompilerOptions<T>;
     private _createProgram !: ts.CreateProgram<T>;
     private _watchProgram !: ts.WatchOfFilesAndCompilerOptions<T>;
     constructor(options : TscRunnerOptions) {
-        this.config = options.config;
+        super(options);
         this._formatHost = this._getFormatHost();
         this._reportWatchStatusChanged = this._reportWatchStatusChanged.bind(this);
 }
@@ -76,7 +124,7 @@ class WatchTscRunner<T extends ts.BuilderProgram> implements TscRunner {
                     , this.config.compilerOptions
                     , ts.sys
                     , this._createProgram
-                    , reportDiagnostic
+                    , this._reportDiagnostic
                     , this._reportWatchStatusChanged)
                 this._watchProgram = ts.createWatchProgram(this._watchHost);
                 return;
@@ -96,67 +144,37 @@ class WatchTscRunner<T extends ts.BuilderProgram> implements TscRunner {
     }
 }
 
-function copyFile(fromPath : string, toPath : string) : Promise<void> {
-    console.log(`copy ${fromPath} => ${toPath}`);
-    return fs.mkdirpAsync(path.dirname(toPath))
-        .then(() => fs.copyAsync(fromPath, toPath))
-}
-
-function copyFiles(fromPaths : string[], destDir : string) : Promise<void> {
-    return Promise.map(fromPaths, (fromPath) => {
-        let toPath = path.join(destDir, fromPath);
-        return copyFile(fromPath, toPath)
-    })
-        .then(() => {})
-}
-
-function reportDiagnostic(diagnostic : ts.Diagnostic) {
-    if (diagnostic.file) {
-        let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
-            diagnostic.start!
-        );
-        let message = ts.flattenDiagnosticMessageText(
-            diagnostic.messageText,
-            "\n"
-        );
-        console.log(
-            `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`
-        );
-    } else {
-        console.log(
-            `${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`
-        );
-    }
-}
-
-function reportDiagnostics(allDiagnostics : ts.Diagnostic[]) {
-    allDiagnostics.forEach(reportDiagnostic);
-}
-
 export interface RunOptions {
     watch ?: boolean;
+    logLevel ?: log.LogLevel;
 }
 
 export function run(options : RunOptions = {}) {
+    let logger = new log.LogService({
+        logLevel: options.logLevel || 'info'
+    })
+    return tsConfig.loadConfig()
+        .then((config) => {
+            let runner = _createRunner({
+                watch : options.watch || false,
+                config,
+                logger
+            });
+            return runner.run();
+        })
+        .catch(console.error)
+}
+
+export interface CreateRunnerOptions {
+    watch : boolean;
+    logger : log.ILogService;
+    config : tsConfig.TsConfig;
+}
+
+function _createRunner(options : CreateRunnerOptions) {
     if (options.watch) {
-        return runWatch();
+        return new WatchTscRunner(options);
     } else {
-        return runBatch();
+        return new BatchTscRunner(options);
     }
-}
-
-export function runWatch() {
-    return tsConfig.loadConfig()
-        .then((config) => {
-            let runner = new WatchTscRunner({ config })
-            return runner.run();
-        })
-}
-
-function runBatch() {
-    return tsConfig.loadConfig()
-        .then((config) => {
-            let runner = new BatchTscRunner({ config })
-            return runner.run();
-        })
 }
