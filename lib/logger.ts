@@ -1,4 +1,10 @@
 // import * as V from 'validac';
+import * as util from 'util';
+// import * as fs from 'fs-extra-promise';
+// import * as objUtil from '../shared/object-util';
+// import * as path from 'path';
+// import * as V from 'validac';
+import * as colors from 'colors/safe';
 
 type ExplicitAny = any;
 let hrtime = process.hrtime;
@@ -332,3 +338,52 @@ export function tracedClass<T extends LoggerConstructor<ExplicitAny>>(ctor : T) 
     }
     return cls;
 }
+interface UtilInspectConsoleOptions extends LogTransportOptions {
+    type: 'console'
+}
+
+// let isUtilInspectConsoleOptions = isLogTransportOptions.register<'console', UtilInspectConsoleOptions>('console', {});
+
+class UtilInspectTransport implements Transport {
+    log(item : any) : void {
+        // item = objUtil.decycle(item)
+        let colorFunc = this._getColor(item);
+        let firstLine = this._prepFirstLine(item);
+        let restLine = this._prepSecondLine(item);
+        console.log(colorFunc([ firstLine, restLine].join('\n')))
+    }
+
+    private _prepFirstLine(item : ExplicitAny) : string {
+        return `*** [${colors.bold(item.level)}] ${colors.bold(item.scope)}: (${new Date(item.ts).toISOString()}) / [${item.elapsed.join(', ')}]`;
+    }
+
+    private _prepSecondLine(item : ExplicitAny) : string {
+        let obj = Object.keys(item).reduce((acc, key) => {
+            if (['scope', 'level', 'ts', 'elapsed'].indexOf(key) === -1) {
+                acc[key] = item[key];
+            }
+            return acc;
+        }, {} as {[key: string]: ExplicitAny});
+        return util.inspect(obj, { depth : null, colors: true });
+    }
+
+    private _getColor(item : ExplicitAny) : (str : string) => string {
+        switch (item.level) {
+            case 'trace':
+                return colors.cyan;
+            case 'debug':
+                return colors.green;
+            case 'info':
+                return colors.white;
+            case 'warn':
+                return colors.yellow;
+            case 'error':
+                return colors.red;
+            default:
+                return colors.white;
+        }
+    }
+}
+
+transports.register('console', (options) => new UtilInspectTransport())
+

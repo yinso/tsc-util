@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const yargs = require('yargs');
-const main = require('../lib/tsc');
+const main = require('../lib');
 const argv = yargs
     .options({
         watch: {

@@ -151,7 +151,11 @@ export interface RunOptions {
 
 export function run(options : RunOptions = {}) {
     let logger = new log.LogService({
-        logLevel: options.logLevel || 'info'
+        scope: 'tsc-util',
+        logLevel: options.logLevel || 'info',
+        transports: [
+            log.transports.make({ type: 'console' }),
+        ]
     })
     return tsConfig.loadConfig()
         .then((config) => {
