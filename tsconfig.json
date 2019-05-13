@@ -3,8 +3,9 @@
     "target": "es5",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "declaration": true,
     "rootDir": ".",
-    "outDir": ".",
+    "outDir": "dist",
     "lib": [
       "es5",
       "es2015.promise",
@@ -16,10 +17,14 @@
     "strict": true,
   },
   "include": [
-    "**/*",
-    "**/**/*"
-  ],
-  "exclude": [
-    "node_modules",
+    "bin/*",
+    "lib/*",
   ]
+  // "include": [
+  //   "**/*"
+  // ],
+  // "exclude": [
+  //   "node_modules",
+  //   ".git"
+  // ]
 }

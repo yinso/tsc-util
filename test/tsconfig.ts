@@ -2,6 +2,7 @@ import { suite , test } from 'mocha-typescript';
 import * as assert from 'assert';
 import * as tsConfig from '../lib/tsconfig';
 import * as ts from 'typescript';
+import * as path from 'path';
 
 let config : tsConfig.TsConfig;
 
@@ -29,15 +30,35 @@ let config : tsConfig.TsConfig;
             .then((c) => {
                 config = c;
                 assert.deepEqual(config.compilerOptions, expectedOptions)
+                assert.equal(path.join(__dirname, '..'), config.rootDir)
+                assert.equal(path.join(__dirname, '..'), config.outDir)
             })
     }
+
 
     @test canResolveFilePaths() {
         return config.resolveFilePaths()
             .then((filePaths) => {
-                console.log(filePaths)
-                console.log(config.toOutPaths(filePaths))
+                let outFilePaths = config.toOutPaths(filePaths);
+                console.log(`******** resolvedFilePaths`, filePaths)
+                assert.deepEqual(filePaths, outFilePaths)
             })
     }
 
+    @test canTestExcludedPaths() {
+        let excluded = config.excluded;
+        console.log(`******** canTestExcluded`, excluded)
+        
+    }
+
+    @test canTestExcludedDirs() {
+        assert.deepEqual([
+            path.join(__dirname, '..', 'node_modules')
+        ], config.excludedDirs())
+    }
+
+    @test canTestIgnoredPath() {
+        let ignoredPath = path.join(__dirname, '..', 'node_modules');
+        assert.ok(config.isIgnoredPath(ignoredPath))
+    }
 }

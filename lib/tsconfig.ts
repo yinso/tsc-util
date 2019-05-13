@@ -3,6 +3,7 @@ import * as fs from 'fs-extra-promise';
 import * as ts from 'typescript';
 import * as path from 'path';
 import { find } from './find';
+import * as minimatch from 'minimatch';
 
 function convertLibs(libs : string[]) : string[] {
     return libs.map((lib) =>`lib.${lib}.d.ts`);
@@ -110,20 +111,39 @@ export class TsConfig {
         }
     }
 
+    get rootDir() {
+        return path.join(this.basePath, this.compilerOptions.rootDir || '.');
+    }
+
     get isOutDir() {
         return !!this.compilerOptions.outDir;
     }
 
     get outDir() {
-        return this.compilerOptions.outDir || '.';
+        return path.join(this.basePath, this.compilerOptions.outDir || '.');
     }
 
     // this excluded is not useable by our find function.
     // we want our find functions to work correctly with the globs here.
     get excluded() : string[] {
-        return [ this.compilerOptions.outDir ].concat(this._getBaseExcluded())
-            .filter((p : string | undefined) : p is string => typeof(p) === 'string');
+        let outDirs = this.outDir === this.rootDir ? [] : [ this.outDir ];
+        return outDirs.concat(this._getBaseExcluded())
+            .filter((p : string | undefined) : p is string => typeof(p) === 'string')
+            .map((spec) => path.join(this.basePath, this._normalizeGlob(spec)))
     }
+
+    excludedDirs() : string[] {
+        let excluded = this.excluded;
+        return excluded.map((exclude) => {
+            if (exclude.endsWith(path.join('/**/*'))) {
+                return exclude.substring(0, exclude.length - 5)
+            } else {
+                return exclude;
+            }
+        })
+    }
+
+
 
     private _getBaseExcluded() : string[] {
         if (this._exclude)
@@ -134,8 +154,13 @@ export class TsConfig {
             return [
                 'node_modules',
                 'bower_components',
-                'jspm_packages'
+                'jspm_packages',
+                '.git'
             ]
+    }
+
+    get excludedRegExp() : RegExp[] {
+        return this.excluded.map((exclude) => minimatch.makeRe(path.join(this.basePath, exclude)))
     }
 
     get files() : string[] | undefined {
@@ -235,6 +260,16 @@ export class TsConfig {
         return filePaths.map((filePath) => this.toOutPath(filePath))
     }
 
+    isIgnoredPath(filePath : string) : boolean {
+        let excluded = this.excludedDirs();
+        for (var i = 0; i < excluded.length; ++i) {
+            // console.log(`******** isIgnoredPath-minimatch`, filePath, excluded[i], minimatch(filePath, excluded[i]))
+            if (minimatch(filePath, excluded[i]))
+                return true
+        }
+        return false;
+    }
+
     // resolveIncludedFilePaths() : Promise<string[]> {
     //     // we'll make use of the find here...
 
@@ -245,10 +280,6 @@ export class TsConfig {
     //     // the idea is that we are going to try to load each of the base
     // }
 
-}
-
-export function findExcludeFromTsConfig(tsConfig : TsConfig) : string[] {
-    return tsConfig.excluded.map((e) => `${e}/**/*`)
 }
 
 export function loadConfig(configName : string = 'tsconfig.json', basePath : string = process.cwd(), recursive : boolean = true) : Promise<TsConfig> {

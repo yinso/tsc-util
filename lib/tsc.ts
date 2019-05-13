@@ -1,11 +1,10 @@
 import * as Promise from 'bluebird';
-import { system } from './system';
-import { find } from './find';
 import * as fs from 'fs-extra-promise';
 import * as path from 'path';
 import * as ts from 'typescript';
 import * as tsConfig from './tsconfig';
 import * as log from './logger';
+import * as chokidar from 'chokidar';
 
 interface TscRunner {
     // this would just do one thing.
@@ -105,11 +104,13 @@ class BatchTscRunner extends BaseTscRunner {
     }
 }
 
+
 class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     private readonly _formatHost : ts.FormatDiagnosticsHost;
     private _watchHost !: ts.WatchCompilerHostOfFilesAndCompilerOptions<T>;
     private _createProgram !: ts.CreateProgram<T>;
     private _watchProgram !: ts.WatchOfFilesAndCompilerOptions<T>;
+    private _jsWatcher !: chokidar.FSWatcher;
     constructor(options : TscRunnerOptions) {
         super(options);
         this._formatHost = this._getFormatHost();
@@ -126,6 +127,7 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
                     , this._createProgram
                     , this._reportDiagnostic
                     , this._reportWatchStatusChanged)
+                
                 this._watchProgram = ts.createWatchProgram(this._watchHost);
                 return;
             })
@@ -152,7 +154,7 @@ export interface RunOptions {
 export function run(options : RunOptions = {}) {
     let logger = new log.LogService({
         scope: 'tsc-util',
-        logLevel: options.logLevel || 'info',
+        logLevel: options.logLevel || log.getDefaultLogLevel(),
         transports: [
             log.transports.make({ type: 'console' }),
         ]

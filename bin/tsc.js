@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const yargs = require('yargs');
-const main = require('../lib');
+const main = require('../dist/lib');
+require('source-map-support/register');
 const argv = yargs
     .options({
         watch: {
