@@ -16,9 +16,10 @@
     "noImplicitAny": true,
     "strict": true,
   },
+  // how to use include?
   "include": [
-    "bin/*",
-    "lib/*",
+    "bin",
+    "lib",
   ]
   // "include": [
   //   "**/*"

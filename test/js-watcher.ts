@@ -16,10 +16,10 @@ let watcher : J.JsWatcher;
                         L.transports.make({ type : 'console' })
                     ]
                 })
-                watcher = new J.JsWatcher({
-                    config,
-                    logger
-                })
+                // watcher = new J.JsWatcher({
+                //     config,
+                //     logger
+                // })
                 // return watcher;
             })
     }
