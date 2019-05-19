@@ -1,6 +1,6 @@
 import { suite, test } from 'mocha-typescript';
 import * as assert from 'assert';
-import { find } from '../lib/find';
+import { find } from '../lib/util';
 import * as path from 'path';
 
 @suite class FindTest {

@@ -3,8 +3,12 @@ import * as assert from 'assert';
 import * as tsConfig from '../lib/tsconfig';
 import * as ts from 'typescript';
 import * as path from 'path';
+import * as tsFinder from '../lib/tsconfig-finder';
+import * as jsWatcher from '../lib/js-watcher';
 
 let config : tsConfig.TsConfig;
+let finder : tsFinder.TsConfigFinder;
+let watcherSpec : jsWatcher.JsWatcherFileSpec;
 
 @suite class TsConfigTest {
     @test canLoadConfig() {
@@ -39,7 +43,8 @@ let config : tsConfig.TsConfig;
     @test canGetInclude() {
         assert.deepEqual([
             'bin',
-            'lib'
+            'lib',
+            'test',
         ], config.include)
     }
 
@@ -47,10 +52,14 @@ let config : tsConfig.TsConfig;
     // to glob spec
     // as well as to FSWatcher spec (which appears to be different)
     @test canLoadIncludeFileSpec() {
+        finder = new tsFinder.TsConfigFinder({
+            config,
+        })
         assert.deepEqual({
             include: [
                 'bin/**/*.{ts,tsx}',
-                'lib/**/*.{ts,tsx}'
+                'lib/**/*.{ts,tsx}',
+                'test/**/*.{ts,tsx}',
             ],
             exclude: [
                 'dist/**/*',
@@ -59,47 +68,68 @@ let config : tsConfig.TsConfig;
                 'jspm_packages/**/*',
                 '.git/**/*',
                 '**/*.d.ts'
-            ]
-        }, config.includedFileSpec())
+            ],
+            rootPath: path.join(__dirname, '..')
+        }, finder.includedFileSpec())
     }
 
     @test canResolveFilePaths() {
-        return config.resolveFilePaths()
+        return finder.resolveFilePaths()
             .then((filePaths) => {
                 console.log(`****** resolveFilePaths`, filePaths)
                 assert.ok(filePaths.length > 0, 'Resolve should return files')
                 filePaths.forEach((filePath) => {
                     let outPath = config.toOutPath(filePath)
                     assert.ok(outPath.indexOf('dist') !== -1)
-                    assert.ok(filePath.indexOf('test') === -1, `test/ not in include: ${filePath}`)
                 })
             })
     }
 
-    @test canTestIncludedJsDtsFileSpec() {
-        let fileSpec = config.includedJsDTsFileSpec();
-        console.log(`****** js/dts/fileSpec`, fileSpec)
-        assert.deepEqual({
-            include: [
-                'bin/**/*.{js,d.ts}',
-                'lib/**/*.{js,d.ts}'
-            ],
-            exclude: [
-                'dist/**/*',
-                'node_modules/**/*',
-                'bower_components/**/*',
-                'jspm_packages/**/*',
-                '.git/**/*'
-            ]
-        }, fileSpec);
-    }
+    // @test canTestIncludedJsDtsFileSpec() {
+    //     watcherSpec = new jsWatcher.JsWatcherFileSpec({ config })
+    //     let fileSpec = watcherSpec.includedJsWatcherFileSpec();
+    //     console.log(`****** js/dts/fileSpec`, fileSpec)
+    //     assert.deepEqual({
+    //         include: [
+    //             'bin/**/*.{js,d.ts}',
+    //             'lib/**/*.{js,d.ts}'
+    //         ],
+    //         exclude: [
+    //             'dist/**/*',
+    //             'node_modules/**/*',
+    //             'bower_components/**/*',
+    //             'jspm_packages/**/*',
+    //             '.git/**/*'
+    //         ],
+    //         rootPath: path.join(__dirname, '..')
+    //     }, fileSpec);
+    // }
 
-    @test canResolveJsDTsPaths() {
-        return config.resolveJsDtsFilePaths()
+    // @test canTestIncludedJsWatcherDirPaths() {
+    //     let fileSpec = watcherSpec.includeJsWatcherDirPaths();
+    //     console.log(`********* jsWatcher.dirPaths`, fileSpec);
+    //     assert.deepEqual(fileSpec, {
+    //         rootPath: path.join(__dirname, '..'),
+    //         include: [
+    //             path.join(__dirname, '..', 'bin'),
+    //             path.join(__dirname, '..', 'lib')
+    //         ],
+    //         exclude: [
+    //             path.join(__dirname, '..', 'dist'),
+    //             path.join(__dirname, '..', 'node_modules'),
+    //             path.join(__dirname, '..', 'bower_components'),
+    //             path.join(__dirname, '..', 'jspm_packages'),
+    //             path.join(__dirname, '..', '.git')
+    //         ]
+    //     })
+    // }
+
+    @test canResolveJsWatcherFilePaths() {
+        return finder.resolveJsWatcherFilePaths()
             .then((filePaths) => {
                 console.log(`****** resolveJsDtsFilePaths`, filePaths)
                 assert.deepEqual(filePaths, [
-                    path.join(__dirname, '..', 'bin', 'tsc.js')
+                    path.join(__dirname, '..', 'bin', 'tsc.js'),
                 ])
             })
     }

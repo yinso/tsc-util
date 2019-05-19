@@ -20,6 +20,7 @@
   "include": [
     "bin",
     "lib",
+    "test"
   ]
   // "include": [
   //   "**/*"

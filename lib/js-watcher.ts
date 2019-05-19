@@ -1,7 +1,10 @@
+import * as Promise from 'bluebird';
 import * as tsConfig from './tsconfig';
 import * as log from './logger';
 import * as chokidar from 'chokidar';
-import * as path from 'path';
+import * as tcGlob from './tsconfig-glob';
+import * as U from './util';
+import { fileURLToPath } from 'url';
 
 export interface JsWatcherOptions {
     config : tsConfig.TsConfig;
@@ -12,62 +15,253 @@ export interface JsWatcherOptions {
 export class JsWatcher {
     readonly config : tsConfig.TsConfig;
     readonly logger : log.ILogService;
-    private _jsWatcher !: chokidar.FSWatcher;
+    private _watcherSpec : JsWatcherFileSpec;
+    private _watcher !: chokidar.FSWatcher;
     
     constructor(options : JsWatcherOptions) {
         this.config = options.config;
         this.logger = options.logger.pushScope(`JsWatcher`);
-        this._jsWatcher = new chokidar.FSWatcher({
+        this._watcher = new chokidar.FSWatcher({
             persistent: true,
-            depth: 0
+            depth: 0,
+            ignorePermissionErrors: true
         })
-        this._jsWatcher.on('add', (filePath) => {
-            this._onAddFile(filePath);
-        })
-        this._jsWatcher.on('addDir', (dirPath) => {
-            this._onAddDir(dirPath)
-        })
-        // do not watch if they are the same
-        // (because we won't be copying anything)
-        if (this.config.rootDir !== this.config.outDir) {
-            this._jsWatcher.add(this.config.rootDir);
-        }
+        this._watcher
+            .on('add', (filePath) => {
+                this._onAddFile(filePath);
+            })
+            .on('change', (filePath) => {
+                this._onChangeFile(filePath);
+            })
+            .on('unlink', (filePath) => {
+                this._onUnlinkFile(filePath);
+            })
+            .on('addDir', (dirPath) => {
+                this._onAddDir(dirPath)
+            })
+            .on('unlinkDir', (filePath) => {
+                this._onUnlinkDir(filePath);
+            })
+            .on('error', (e : Error) => {
+                this._onError(e);
+            })
+        this._watcherSpec = new JsWatcherFileSpec( options)
     }
 
-    private _onAddFile(filePath : string) {
+    run() {
+        // how do I know when I am done watch files?
+        // that's something difficult to answer.
+        return new Promise<void>((resolve, reject) => {
+            if (this.config.rootDir !== this.config.outDir) {
+                this._watcher.add(this._watcherSpec.includeDirs());
+            }
+            resolve();
+        })
+    }
+
+    getWatched() {
+        let watched = this._watcher.getWatched();
+        return watched;
+    }
+
+    private _onAddFile(filePath : string) : void {
         this.logger.debug({
             scope: `_onAddFile`,
             args: [ filePath ],
             isIgnored : this.config.isIgnoredPath(filePath),
             matches : {
                 dotJs : this._isDotJs(filePath),
-                dotDDotTs : this._isDotDDotTs(filePath)
-            }
+                dotDDotTs : this._isDotDts(filePath)
+            },
+            shouldWatch: this._shouldWatchFile(filePath)
         });
-        if ((this._isDotDDotTs(filePath) || this._isDotJs(filePath)) && !this.config.isIgnoredPath(filePath)) {
-            // we are watching it...
+        if (this._shouldWatchFile(filePath)) {
+            // we should copy to destination.
+            this._copyFile(filePath).then(() => null)
         } else {
-            this._jsWatcher.unwatch(filePath);
+            this._watcher.unwatch(filePath);
         }
     }
 
-    private _onAddDir(dirPath : string) {
+    private _onChangeFile(filePath : string) : void {
+        this.logger.debug({
+            scope: `_onChangeFile`,
+            args: [ filePath ],
+            isIgnored : this.config.isIgnoredPath(filePath),
+            matches : {
+                dotJs : this._isDotJs(filePath),
+                dotDDotTs : this._isDotDts(filePath)
+            },
+            shouldWatch: this._shouldWatchFile(filePath)
+        });
+        if (this._shouldWatchFile(filePath)) {
+            // we should copy to destination.
+            this._copyFile(filePath).then(() => null)
+        } else {
+            this._watcher.unwatch(filePath);
+        }
+    }
+
+    private _onUnlinkFile(filePath : string) : void {
+        this.logger.debug({
+            scope: '_onUnlinkFile',
+            args: [ filePath ]
+        })
+        this._watcher.unwatch(filePath);
+        let destPath = this.config.toOutPath(filePath);
+        U.rmrf(destPath).then(() => null)
+    }
+
+    private _onUnlinkDir(filePath : string) : void {
+        this.logger.debug({
+            scope: '_onUnlinkDir',
+            args: [ filePath ]
+        })
+        this._watcher.unwatch(filePath);
+        let destPath = this.config.toOutPath(filePath);
+        U.rmrf(destPath).then(() => null)
+    }
+
+    private _onError(e : Error) : void {
+        this.logger.error({
+            scope: '_onError',
+            error: e
+        });
+    }
+
+    private _onAddDir(dirPath : string) : void {
         this.logger.debug({
             scope: `_onAddDir`,
             args: [ dirPath ],
             isIgnored : this.config.isIgnoredPath(dirPath)
         })
         if (!this.config.isIgnoredPath(dirPath)) {
-            this._jsWatcher.add(dirPath)
+            this._watcher.add(dirPath)
         }
+    }
+
+    private _shouldWatchFile(filePath : string) {
+        return (this._isDotDts(filePath) || this._isDotJs(filePath)) && !this.config.isIgnoredPath(filePath);
     }
 
     private _isDotJs(filePath : string) : boolean {
         return filePath.toLowerCase().endsWith('.js');
     }
 
-    private _isDotDDotTs(filePath : string) : boolean {
+    private _isDotDts(filePath : string) : boolean {
         return filePath.toLowerCase().endsWith('.d.ts');
     }
 
+    private _copyFile(filePath : string) {
+        let outPath = this.config.toOutPath(filePath);
+        return U.copyFile(filePath, outPath)
+            .then(() => null)
+    }
+}
+
+export interface IncludedFileSpec {
+    rootPath : string;
+    include: string[];
+    exclude : string[];
+}
+
+export interface JsWatcherFileSpecOptions {
+    config : tsConfig.TsConfig;
+}
+
+export class JsWatcherFileSpec {
+    readonly config : tsConfig.TsConfig;
+    constructor(options : JsWatcherFileSpecOptions) {
+        this.config = options.config;
+    }
+
+    includeDirs() : string[] {
+        return (this.config.include || []).concat(this.config.files || []).map((spec) => {
+            return new tcGlob.TsConfigGlob({
+                spec,
+                basePath: this.config.rootPath,
+                allowTypes: ['.js', '.d.ts']
+            })
+        })
+            .filter((glob) => {
+                return glob.isDirectorySpec() ||
+                    glob.isWildCardSpec() ||
+                    (glob.isFileSpec() && (glob.hasExtension('.js') || glob.hasExtension('.d.ts')));
+            })
+            .map((glob) => {
+                return glob.toJsWatcherDirPath(true)
+            })
+
+    }
+
+    isIgnoredPath(filePath : string) : boolean {
+        let globs = (this.config.excluded || []).map((spec) => {
+            return new tcGlob.TsConfigGlob({
+                spec,
+                basePath: this.config.rootPath
+            })
+        })
+        let glob = globs.find((glob) => {
+            return glob.match(filePath)
+        })
+        return !!glob;
+    }
+
+    // includedJsWatcherFileSpec() : IncludedFileSpec {
+    //     let exclude = (this.config.excluded || []).map((exc) => {
+    //         return new tcGlob.TsConfigGlob({
+    //             spec: exc,
+    //             basePath: this.config.rootPath
+    //         })
+    //     })
+    //         .map((glob) => glob.toExcludeGlob())
+    //     let include = (this.config.include || []).concat(this.config.files || []).map((spec) => {
+    //         return new tcGlob.TsConfigGlob({
+    //             spec,
+    //             basePath: this.config.rootPath,
+    //             allowTypes: ['.js', '.d.ts']
+    //         })
+    //     })
+    //         .filter((glob) => {
+    //             return glob.isDirectorySpec() ||
+    //                 glob.isWildCardSpec() ||
+    //                 (glob.isFileSpec() && (glob.hasExtension('.js') || glob.hasExtension('.d.ts')));
+    //         })
+    //         .map((glob) => {
+    //             return glob.toIncludeGlob()
+    //         })
+    //     return {
+    //         rootPath: this.config.rootPath,
+    //         include, exclude
+    //     }
+    // }
+
+    // includeJsWatcherDirPaths(normalize : boolean = true) : IncludedFileSpec {
+    //     let exclude = (this.config.excluded || []).map((exc) => {
+    //         return new tcGlob.TsConfigGlob({
+    //             spec: exc,
+    //             basePath: this.config.rootPath
+    //         })
+    //     })
+    //         .map((glob) => glob.toJsWatcherDirPath(normalize))
+    //     let include = (this.config.include || []).concat(this.config.files || []).map((spec) => {
+    //         return new tcGlob.TsConfigGlob({
+    //             spec,
+    //             basePath: this.config.rootPath,
+    //             allowTypes: ['.js', '.d.ts']
+    //         })
+    //     })
+    //         .filter((glob) => {
+    //             return glob.isDirectorySpec() ||
+    //                 glob.isWildCardSpec() ||
+    //                 (glob.isFileSpec() && (glob.hasExtension('.js') || glob.hasExtension('.d.ts')));
+    //         })
+    //         .map((glob) => {
+    //             return glob.toJsWatcherDirPath(normalize)
+    //         })
+    //     return {
+    //         rootPath: this.config.rootPath,
+    //         include, exclude
+    //     }
+    // }
 }

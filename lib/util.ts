@@ -1,5 +1,16 @@
 import * as Promise from 'bluebird';
 import * as glob from 'glob';
+import * as fs from 'fs-extra-promise';
+import * as path from 'path';
+
+export function copyFile(fromPath : string, toPath : string) : Promise<void> {
+    return fs.mkdirpAsync(path.dirname(toPath))
+        .then(() => fs.copyAsync(fromPath, toPath))
+}
+
+export function rmrf(filePath : string) : Promise<void> {
+    return fs.removeAsync(filePath);
+}
 
 export interface FindOptions {
     cwd ?: string;

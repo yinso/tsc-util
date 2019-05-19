@@ -5,6 +5,9 @@ import * as ts from 'typescript';
 import * as tsConfig from './tsconfig';
 import * as log from './logger';
 import * as chokidar from 'chokidar';
+import * as finder from './tsconfig-finder';
+import * as U from './util';
+import * as watcher from './js-watcher';
 
 interface TscRunner {
     // this would just do one thing.
@@ -18,25 +21,18 @@ interface TscRunnerOptions {
 
 abstract class BaseTscRunner implements TscRunner {
     readonly config : tsConfig.TsConfig;
+    readonly finder : finder.TsConfigFinder;
     readonly logger : log.ILogService;
     constructor(options : TscRunnerOptions) {
         this.config = options.config;
         this.logger = options.logger;
+        this.finder = new finder.TsConfigFinder({ config : options.config })
         this._reportDiagnostic = this._reportDiagnostic.bind(this)
     }
 
     abstract run() : Promise<void>;
 
-    copyFile(fromPath : string, toPath : string) : Promise<void> {
-        this.logger.debug({
-            method: 'copyFile',
-            args: [ fromPath, toPath ]
-        })
-        return fs.mkdirpAsync(path.dirname(toPath))
-            .then(() => fs.copyAsync(fromPath, toPath))
-    }
-
-    _reportDiagnostic(diagnostic : ts.Diagnostic) {
+    protected _reportDiagnostic(diagnostic : ts.Diagnostic) {
         if (diagnostic.file) {
             let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
                 diagnostic.start!
@@ -66,7 +62,7 @@ class BatchTscRunner extends BaseTscRunner {
     }
 
     private _batchCompile() : Promise<void> {
-        return this.config.resolveFilePaths()
+        return this.finder.resolveFilePaths()
         .then((tsFiles) => {
             let program = ts.createProgram(tsFiles, this.config.compilerOptions)
             let emitResult = program.emit();
@@ -80,11 +76,11 @@ class BatchTscRunner extends BaseTscRunner {
 
     private _batchJsAndDTs() : Promise<void> {
         if (this.config.rootPath !== this.config.outDir) {
-            return this.config.resolveJsDtsFilePaths()
+            return this.finder.resolveJsWatcherFilePaths()
                 .then((declPaths) => {
                     return Promise.map(declPaths, (fromPath) => {
                         let outPath = this.config.toOutPath(fromPath);
-                        return this.copyFile(fromPath, outPath)
+                        return U.copyFile(fromPath, outPath)
                     })
                         .then(() => {})
                 })
@@ -110,15 +106,16 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     private _watchHost !: ts.WatchCompilerHostOfFilesAndCompilerOptions<T>;
     private _createProgram !: ts.CreateProgram<T>;
     private _watchProgram !: ts.WatchOfFilesAndCompilerOptions<T>;
-    private _jsWatcher !: chokidar.FSWatcher;
+    private _jsWatcher : watcher.JsWatcher;
     constructor(options : TscRunnerOptions) {
         super(options);
         this._formatHost = this._getFormatHost();
         this._reportWatchStatusChanged = this._reportWatchStatusChanged.bind(this);
-}
+        this._jsWatcher = new watcher.JsWatcher(options);
+    }
 
     run() : Promise<void> {
-        return this.config.resolveFilePaths()
+        return this.finder.resolveFilePaths()
             .then((tsFiles) => {
                 this._createProgram = (ts.createEmitAndSemanticDiagnosticsBuilderProgram as any) as ts.CreateProgram<T>;
                 this._watchHost = ts.createWatchCompilerHost(tsFiles
@@ -131,10 +128,13 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
                 this._watchProgram = ts.createWatchProgram(this._watchHost);
                 return;
             })
+            .then(() => this._jsWatcher.run())
     }
 
     private _reportWatchStatusChanged(diagnostic: ts.Diagnostic) {
-        console.info(ts.formatDiagnostic(diagnostic, this._formatHost));
+        this.logger.info({
+            message: ts.formatDiagnostic(diagnostic, this._formatHost)
+        })
     }
 
     private _getFormatHost() : ts.FormatDiagnosticsHost {

@@ -2,7 +2,7 @@ import * as Promise from 'bluebird';
 import * as fs from 'fs-extra-promise';
 import * as ts from 'typescript';
 import * as path from 'path';
-import { find } from './find';
+import { find } from './util';
 import * as minimatch from 'minimatch';
 import * as tcGlob from './tsconfig-glob';
 
@@ -82,6 +82,7 @@ export interface TsConfigOptions {
 }
 
 export interface IncludedFileSpec {
+    rootPath : string;
     include: string[];
     exclude : string[];
 }
@@ -191,86 +192,17 @@ export class TsConfig {
             return undefined;
     }
 
-    includedFileSpec(useDefaultExclude : boolean = true) : IncludedFileSpec {
-        let excluded = this.excluded.concat(useDefaultExclude ? this._defaultExclude() : []).map((exc) => {
-            return new tcGlob.TsConfigGlob({
-                spec: exc,
-                basePath: this.rootPath
-            })
-        })
-        let include = (this.include || this.files) ? (this.include || []).map((spec) => {
-            return new tcGlob.TsConfigGlob({
-                spec,
-                basePath: this.rootPath
-            })
-        }).map((glob) => glob.toIncludeGlob()).concat(this.files || []) : this._defaultInclude();
-        return {
-            include,
-            exclude: excluded.map((exc) => exc.toExcludeGlob())
-        }
-    }
-
-    includedJsDtsFileSpec() : IncludedFileSpec {
-        let exclude = (this.excluded || []).map((exc) => {
-            return new tcGlob.TsConfigGlob({
-                spec: exc,
-                basePath: this.rootPath
-            })
-        })
-            .map((glob) => glob.toExcludeGlob())
-        let include = (this.include || []).concat(this.files || []).map((spec) => {
-            return new tcGlob.TsConfigGlob({
-                spec,
-                basePath: this.rootPath
-            })
-        })
-            .filter((glob) => {
-                return glob.isDirectorySpec() ||
-                    glob.isWildCardSpec() ||
-                    (glob.isFileSpec() && (glob.hasExtension('.js') || glob.hasExtension('.d.ts')));
-            })
-            .map((glob) => {
-                if (glob.isDirectorySpec() || glob.isWildCardSpec())
-                    glob.setAllowTypes('.js', '.d.ts')
-                return glob.toIncludeGlob()
-            })
-        return {
-            include, exclude
-        }
-    }
-
-    private _defaultExclude() {
+    defaultExclude() {
         return [
             '**/*.d.ts',
         ]
     }
 
-    private _defaultInclude() {
+    defaultInclude() {
         let extensions = [
             'ts','tsx'
         ].concat(this.compilerOptions.allowJs ? ['.js','.jsx'] : []);
         return [`**/*.{${extensions.join(',')}}`]
-    }
-
-    resolveFilePaths() : Promise<string[]> {
-        let included = this.includedFileSpec();
-        return find(included.include, {
-            cwd: this.rootPath, // this needs to include rootDir I think.
-            exclude: included.exclude,
-            fullPath: true
-        })
-    }
-
-    resolveJsDtsFilePaths() : Promise<string[]> {
-        let included = this.includedFileSpec(false);
-        return find([
-            '**/*.d.ts',
-            '**/*.js'
-        ], {
-            cwd: this.rootPath,
-            exclude: included.exclude,
-            fullPath: true
-        })
     }
 
     get rootPath() {

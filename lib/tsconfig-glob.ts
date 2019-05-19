@@ -1,5 +1,4 @@
-import * as path from 'path';
-import * as pathUtil from './path-util';
+import * as vpath from './vpath';
 /**
  * TypeScript uses its own glob that differs from `glob`'s spec
  * and the `glob` used in `chokidar`, so we need something to 
@@ -23,32 +22,109 @@ export interface TsConfigGlobOptions {
     spec : string;
     basePath ?: string;
     allowJs ?: boolean;
+    allowTypes ?: string[];
 }
 
 export class TsConfigGlob {
-    readonly spec : string;
-    readonly basePath : string;
-    readonly allowJs : boolean;
-    private _segs : string[];
-    private _allowTypes : string[];
+    readonly spec : vpath.PathObject;
+    readonly basePath : vpath.PathObject;
+    readonly allowTypes : string[];
     constructor(options : TsConfigGlobOptions) {
-        this.spec = options.spec;
-        this.basePath = options.basePath || process.cwd();
-        this.allowJs = options.allowJs || false;
-        this._segs = this.spec.split('/')
-        if (this._segs.length === 0) {
-            throw new Error(`InvalidTsIncludePattern: ${this.spec}`)
+        this.spec = new vpath.PathObject(options.spec);
+        this.basePath = new vpath.PathObject(options.basePath || process.cwd());
+        this.allowTypes = options.allowTypes ? options.allowTypes : options.allowJs ? ['.ts', '.tsx', '.js', '.jsx'] : ['.ts', '.tsx'];
+    }
+
+    toFullPath() {
+        return this.basePath.join(this.spec.toVirtualPath());
+    }
+
+    toRegExp(useFullPath : boolean = false) : RegExp {
+        // we are matching on / as the separator.
+        if (useFullPath) {
+            let segs = this.basePath.segments().concat(this.spec.segments());
+            return new RegExp(`^` + segs.map((seg) => this._segToRegEx(seg)).join('\\/'))
+        } else {
+            let segs = this.spec.segments();
+            return new RegExp(`\\/` + segs.map((seg) => this._segToRegEx(seg)).join('\\/'))
         }
-        this._allowTypes = this._defaultSetAllowTypes();
     }
 
-    toChokidar() : string {
-        return this.spec;   
+    match(filePath : string) : boolean {
+        filePath = new vpath.PathObject(filePath).toVirtualPath();
+        let matched = filePath.match(this.toRegExp())
+        return !!matched;
     }
 
+    isRecursiveSpec() : boolean {
+        let segments = this.spec.segments()
+        let seg = segments.find((seg) => seg === '**')
+        return !!seg;
+    }
+
+    isFileSpec() : boolean {
+        let extname = this.spec.extname()
+        return extname !== '';
+    }
+
+    hasExtension(extname : string) : boolean {
+        return this.spec.lastSeg().endsWith(extname)
+    }
+
+    hasWildCard() : boolean {
+        let segments = this.spec.segments()
+        let seg = segments.find((seg) => {
+            return seg !== '**' && (seg.indexOf('*') !== -1 || seg.indexOf('?') !== -1);
+        })
+        return !!seg;
+    }
+
+    isDirectorySpec() {
+        return !this.isWildCardSpec() && this.spec.extname() === '';
+    }
+
+    isWildCardSpec(seg : string = this.spec.lastSeg()) {
+        return seg === '*' || seg === '**';
+    }
     toIncludeGlob(useFullPath ?: boolean) : string {
         // if ends in directory name.
         return this._useFullPath(this._toIncludeGlob(), useFullPath || false);
+    }
+
+    toExcludeGlob(useFullPath ?: boolean) : string {
+        return this._useFullPath(this._toExcludeGlob(), useFullPath || false)
+    }
+
+    toJsWatcherDirPath(useFullPath : boolean = true) : string {
+        // what are we looking for? the following.
+        // a single dir path
+        if (this.isDirectorySpec()) {
+            return this._useFullPath(this.spec.toVirtualPath(), useFullPath, false);
+        } else if (this.isWildCardSpec()) {
+            // wildcard spec ends in *, and or could be a directory.
+            // strip out the parts that are mean
+            return this._useFullPath(this._stripWildCard(), useFullPath, false);
+        } else { // if this is a file - what do we do? return itself.
+            return this._useFullPath(this.spec.toVirtualPath(), useFullPath, false);
+        }
+    }
+
+    private _toExcludeGlob() : string {
+        if (this.isDirectorySpec()) {
+            return `${this.spec.toVirtualPath()}/**/*`;
+        } else { // this should have been basically a 
+            return this.spec.toVirtualPath();
+        }
+    }
+
+    private _stripWildCard() {
+        if (this.hasWildCard()) {
+            let segments = this.spec.segments();
+            segments.pop();
+            return new vpath.PathObject(segments.join(vpath.BASE_DELIM)).toVirtualPath();
+        } else {
+            return this.spec.toVirtualPath();
+        }
     }
 
     private _toIncludeGlob() : string {
@@ -60,87 +136,39 @@ export class TsConfigGlob {
             // we can make assumption that 
             return this.spec + '.' + this.globAllowTypeString();
         } else { // this should have been basically a 
-            return this.spec;
+            return this.spec.toVirtualPath();
         }
-    }
-
-    private _useFullPath(spec : string, useFullPath : boolean) {
-        return useFullPath ? pathUtil.join(this.basePath, spec) : spec;
-    }
-
-    toExcludeGlob(useFullPath ?: boolean) : string {
-        return this._useFullPath(this._toExcludeGlob(), useFullPath || false)
-    }
-
-    private _toExcludeGlob() : string {
-        if (this.isDirectorySpec()) {
-            return `${this.spec}/**/*`;
-        } else { // this should have been basically a 
-            return this.spec;
-        }
-    }
-
-    toString() : string {
-        return this.spec;
-    }
-
-    valueOf() : string {
-        return this.toString();
-    }
-
-    setAllowTypes(...types : string[]) {
-        this._allowTypes = types;
-    }
-
-    private _defaultSetAllowTypes() {
-        let allowTypes = [
-            '.ts',
-            '.tsx',
-        ]
-        if (this.allowJs) {
-            allowTypes.push('.js', '.jsx');
-        }
-        return allowTypes;
-    } 
-
-    allowTypes() : string[] {
-        return this._allowTypes;
     }
 
     globAllowTypeString() : string {
-        return '{' + this.allowTypes().map((ext) => ext.substring(1)).join(',') + '}'
+        return '{' + this.allowTypes.map((ext) => ext.substring(1)).join(',') + '}'
     }
 
-    hasWildCard() {
-        return this.spec.indexOf('*') !== -1 && this.spec.indexOf('?') !== -1;
+    private _useFullPath(spec : string, useFullPath : boolean, useVPath : boolean = true) {
+        if (useFullPath) {
+            let joinedPath = this.basePath.join(spec);
+            if (useVPath) {
+                return joinedPath.toVirtualPath();
+            } else {
+                return joinedPath.toOsPath();
+            }
+        } else {
+            return spec;
+        }
     }
 
-    isRecursiveSpec() {
-        return this.spec.indexOf('**/') !== -1;
-    }
+    private _segToRegEx(seg : string) : string {
+        // https://www.typescriptlang.org/docs/handbook/tsconfig-json.html
+        // * matches zero or more characters (excluding directory separators)
+        // ? matches any one character (excluding directory separators)
+        // **/ recursively matches any subdirectory
 
-    isFileSpec() {
-        let extname = path.extname(this._lastSeg);
-        return extname !== '';
-    }
-
-    hasExtension(extname : string) {
-        return this.isFileSpec() && this._lastSeg.indexOf(extname) !== -1;
-    }
-
-    private get _lastSeg() : string {
-        return this._segs[this._segs.length - 1]
-    }
-
-    isDirectorySpec() {
-        return !this.isWildCardSpec() && path.extname(this._lastSeg) === '';
-    }
-
-    isWildCardSpec() {
-        return this._lastSeg === '*';
-    }
-
-    isRelativeSpec() {
-        return this.spec[0] !== '/' || this.spec[0] === '.';
+        if (seg === '**') {
+            return `(.*)?`;
+        } else {
+            return seg.replace(/\?/g, '[^\/]?')
+                .replace(/\*/g, '([^\/]*)?')
+                .replace(/\./g, '\\.');
+        }
     }
 }
