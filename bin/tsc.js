@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 const yargs = require('yargs');
-const main = require('../dist/lib');
+// in source mode, below doesn't work.
+// we need the bin field in package.json to refer to the dist/ version of
+// this script in order for below to work.
+// and we should not run this script directly.
+const main = require('../lib');
 require('source-map-support/register');
 const argv = yargs
     .options({

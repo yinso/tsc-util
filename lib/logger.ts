@@ -159,7 +159,7 @@ export class LogService implements ILogService {
     readonly transports : Transport[];
     constructor(options : LogServiceOptions = { logLevel : getDefaultLogLevel() , scope : '', startTime: hrtime(), data : {} , traceKeys: [], transports : [] }) {
         this.logLevel = options.logLevel || getDefaultLogLevel();
-        console.log(`********** LogService.logLevel`, this.logLevel)
+        // console.log(`********** LogService.logLevel`, this.logLevel)
         this.scope = options.scope || '';
         this.transports = options.transports || []; // how do I pass this in?
         this.data = options.data || {};
