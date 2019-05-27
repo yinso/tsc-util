@@ -12,6 +12,9 @@ This small utility is meant to support the development pattern of:
 
 * Intermixing `*.ts` and `*.d.ts` / `*.js` pair in the source directory.
 * Copy to an `dist` directory, with the `*.d.ts` and `*.js` copied.
+* Any references to `dist` foldr inside the `*.js` files are normalized to remove `dist`.
+* If you are using `ts-node` in the `*.js`, it's removed when copied to `dist`.
+* If you are using `source-map-support` in the `*.js`, it's removed once copied to `dist`.
 
 As the `*.d.ts` and `*.js` files are manually copied, you do not need to enable `allowJs` in `tsconfig`.
 
@@ -22,4 +25,27 @@ As the `*.d.ts` and `*.js` files are manually copied, you do not need to enable 
 ## Usage
 
 Just run `tsc-util` (in place of `tsc`). Note that `tsc-util` currently doesn't handle any parameters that `tsc` does, i.e. it's not a pass through, even though it calls `tsc` for you.
+
+There are two main patterns:
+
+* `source-map-support` pattern - use `dist/` in the `import`/`require`'s.
+* `ts-node` pattern - use without `dist/` in the `import`/`require`'s.
+
+## `source-map-support` Usage Pattern
+
+The `source-map-support` pattern is as follows:
+
+* Try to include the files from the `dist` folder, which includes the `*.d.ts`, `*.js`, and `*.js.map` files.
+* use `source-map-support` to map back to the `*.ts` in the root folder.
+
+With this pattern, you'll need to first compile `dist` folder before doing testing, and need to check in the `dist` folder if you need to `npm install` from `git` (instead of `npm` registry). The nice part of this pattern is that you are not including TypeScript as part of the run-time.
+
+## `ts-node` Usage Pattern
+
+The `ts-node` pattern is as follows:
+
+* Use `require('ts-node/register')` in the start script.
+* all of the includes are referencing outside of the `dist` folder, since we will be directly running via `ts-node`.
+
+With this pattern, you'll need to use `ts-node` as part of your development process. `dist` doesn't need to exist first prior to development, nor does `dist` needs to be checked in if you are `npm install` from `git`.
 

@@ -4,7 +4,7 @@ import * as log from './logger';
 import * as chokidar from 'chokidar';
 import * as tcGlob from './tsconfig-glob';
 import * as U from './util';
-import { fileURLToPath } from 'url';
+import * as P from 'esdeps-parser';
 
 export interface JsWatcherOptions {
     config : tsConfig.TsConfig;
@@ -77,7 +77,7 @@ export class JsWatcher {
         });
         if (this._shouldWatchFile(filePath)) {
             // we should copy to destination.
-            this._copyFile(filePath).then(() => null)
+            copyFile(this.config, filePath).then(() => null)
         } else {
             this._watcher.unwatch(filePath);
         }
@@ -96,7 +96,7 @@ export class JsWatcher {
         });
         if (this._shouldWatchFile(filePath)) {
             // we should copy to destination.
-            this._copyFile(filePath).then(() => null)
+            copyFile(this.config, filePath).then(() => null)
         } else {
             this._watcher.unwatch(filePath);
         }
@@ -151,12 +151,41 @@ export class JsWatcher {
     private _isDotDts(filePath : string) : boolean {
         return filePath.toLowerCase().endsWith('.d.ts');
     }
+}
 
-    private _copyFile(filePath : string) {
-        let outPath = this.config.toOutPath(filePath);
-        return U.copyFile(filePath, outPath)
-            .then(() => null)
-    }
+export function copyFile(config : tsConfig.TsConfig, filePath : string) : Promise<void> {
+    let outPath = config.toOutPath(filePath);
+    // what do I want to do? I want to read in the file and
+    // then do some transformation.
+    return U.readFile(filePath)
+        .then((data) => P.parse({
+            filePath, data
+        }))
+        .then((mod : P.Module) => {
+            mod.depends.forEach((dep : P.Depend) => {
+                // what do I want to do?
+                // if depend == source-map-support - delete this depend.
+                // if depend has outDir, replace it.
+                // this.logger.debug({
+                //     scope: `_copyFile:DEPEND`,
+                //     dep,
+                //     isFilter: dep.spec.match('source-map-support'),
+                //     isRelative: dep.isRelative,
+                //     normalizedSpec : dep.isRelative ? this.config.moveModuleSpec(mod.filePath, dep.spec) : dep.spec
+                // })
+                if (dep.spec.match('source-map-support')) {
+                    mod.removeDep(dep);
+                } else if (dep.spec.match('ts-node')) {
+                    mod.removeDep(dep);
+                } else if (dep.isRelative) {
+                    mod.moveDep(dep, config.moveModuleSpec(mod.filePath, dep.spec))
+                } // else nothing.
+            })
+            return mod.toString()
+        })
+        .then((data) => {
+            U.writeFile(outPath, data)
+        })
 }
 
 export interface IncludedFileSpec {

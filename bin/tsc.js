@@ -4,7 +4,9 @@ const yargs = require('yargs');
 // we need the bin field in package.json to refer to the dist/ version of
 // this script in order for below to work.
 // and we should not run this script directly.
-const main = require('../lib');
+const main = require('../dist/lib/index');
+// this line needs to be removed in production...
+// hmm...
 require('source-map-support/register');
 const argv = yargs
     .options({

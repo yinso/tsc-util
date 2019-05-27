@@ -1,6 +1,4 @@
 import * as path from 'path';
-import * as os from 'os';
-import { pathToFileURL } from 'url';
 
 export const BASE_DELIM = '/';
 export const WINDOWS_DELIM = '\\';
@@ -20,8 +18,12 @@ export class PathObject {
         return new PathObject(path.dirname(this.filePath));
     }
 
-    basename() : string {
-        return path.basename(this.filePath);
+    basename(extname ?: string) : string {
+        if (extname) {
+            return path.basename(this.filePath, extname);
+        } else {
+            return path.basename(this.filePath);
+        }
     }
 
     extname() : string {
@@ -83,3 +85,36 @@ export class PathObject {
         return !this.isAbsolute();
     }
 }
+
+export function isAbsolute(filePath : string) : boolean {
+    return new PathObject(filePath).isAbsolute();
+}
+
+export function isRelative(filePath : string) : boolean {
+    return new PathObject(filePath).isRelative();
+}
+
+export function join(filePath : string, ...segs : string[]) : PathObject {
+    return new PathObject(filePath).join(...segs);
+}
+
+export function relative(fromPath : string, toPath : string) : PathObject {
+    return new PathObject(fromPath).relative(toPath);
+}
+
+export function resolve(filePath : string, ...segs : string[]) : PathObject {
+    return new PathObject(filePath).resolve(...segs);
+}
+
+export function dirname(filePath : string) : PathObject {
+    return new PathObject(filePath).dirname();
+}
+
+export function basename(filePath : string, extname ?: string) : string {
+    return new PathObject(filePath).basename(extname);
+}
+
+export function extname(filePath : string) : string {
+    return new PathObject(filePath).extname();
+}
+

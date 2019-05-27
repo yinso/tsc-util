@@ -1,10 +1,7 @@
 import * as Promise from 'bluebird';
-import * as fs from 'fs-extra-promise';
-import * as path from 'path';
 import * as ts from 'typescript';
 import * as tsConfig from './tsconfig';
 import * as log from './logger';
-import * as chokidar from 'chokidar';
 import * as finder from './tsconfig-finder';
 import * as U from './util';
 import * as watcher from './js-watcher';
@@ -79,8 +76,7 @@ class BatchTscRunner extends BaseTscRunner {
             return this.finder.resolveJsWatcherFilePaths()
                 .then((declPaths) => {
                     return Promise.map(declPaths, (fromPath) => {
-                        let outPath = this.config.toOutPath(fromPath);
-                        return U.copyFile(fromPath, outPath)
+                        return watcher.copyFile(this.config, fromPath)
                     })
                         .then(() => {})
                 })

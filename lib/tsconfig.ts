@@ -2,9 +2,8 @@ import * as Promise from 'bluebird';
 import * as fs from 'fs-extra-promise';
 import * as ts from 'typescript';
 import * as path from 'path';
-import { find } from './util';
 import * as minimatch from 'minimatch';
-import * as tcGlob from './tsconfig-glob';
+import * as vPath from './vpath';
 
 function convertLibs(libs : string[]) : string[] {
     return libs.map((lib) =>`lib.${lib}.d.ts`);
@@ -222,6 +221,11 @@ export class TsConfig {
         return filePaths.map((filePath) => this.toOutPath(filePath))
     }
 
+    toRootPath(filePath : string) : string {
+        let relFilePath = path.relative(this.outPath, filePath);
+        return path.join(this.rootPath, relFilePath);
+    }
+
     isIgnoredPath(filePath : string) : boolean {
         let excluded = this.excludedDirs();
         for (var i = 0; i < excluded.length; ++i) {
@@ -230,6 +234,44 @@ export class TsConfig {
                 return true
         }
         return false;
+    }
+
+    /**
+     * Moving a particular module from rootDir to outDir, and then rewrite
+     * its path if it has outDir as part of the original path.
+     * 
+     * i.e.
+     * 
+     * config.moveModuleSpec('./lib/tsc.js', '../dist/lib/index') ==> '../lib/index'
+     * 
+     * modulePath = './bin/tsc.js'
+     * spec = '../dist/lib/index'
+     * 
+     * targetModulePath = './dist/bin/tsc.js'
+     * normalizedSpec = './dist/lib/index'
+     * targetSpec = '../lib/index'
+     * 
+     * @param modulePath - the relative path from the perspective of tsconfig.
+     * @param spec - the spec inside of the module.
+     */
+    moveModuleSpec(modulePath : string, spec : string) : string {
+        let fullModulePath = vPath.isAbsolute(modulePath) ? modulePath : path.join(this.rootPath, modulePath);
+        let targetModulePath = this.toOutPath(fullModulePath);
+        let normalizedSpec = path.join(path.dirname(fullModulePath), spec); // from rootPath
+        if (normalizedSpec.startsWith(this.outDir)) {
+            let targetSpec = path.relative(path.dirname(targetModulePath), normalizedSpec)
+            // console.log(`*********** moveModuleSpec`, {
+            //     modulePath,
+            //     spec,
+            //     fullModulePath,
+            //     targetModulePath,
+            //     normalizedSpec,
+            //     targetSpec
+            // })
+            return new vPath.PathObject(targetSpec).toVirtualPath();
+        } else {
+            return spec;
+        }
     }
 }
 

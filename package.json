@@ -4,7 +4,7 @@
   "description": "Small utility to wrap around TypeScript compiler to deal with declaration and js files",
   "main": "dist/lib/index",
   "bin": {
-    "tsc-util": "dist/bin/tsc.js"
+    "tsc-util": "bin/tsc.js"
   },
   "scripts": {
     "test": "./node_modules/.bin/mocha"
@@ -41,6 +41,7 @@
     "bluebird": "^3.5.4",
     "chokidar": "^3.0.0",
     "colors": "^1.3.3",
+    "esdeps-parser": "^1.0.0",
     "fs-extra-promise": "^1.0.1",
     "glob": "^7.1.3",
     "minimatch": "^3.0.4",

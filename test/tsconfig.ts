@@ -85,44 +85,26 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
             })
     }
 
-    // @test canTestIncludedJsDtsFileSpec() {
-    //     watcherSpec = new jsWatcher.JsWatcherFileSpec({ config })
-    //     let fileSpec = watcherSpec.includedJsWatcherFileSpec();
-    //     console.log(`****** js/dts/fileSpec`, fileSpec)
-    //     assert.deepEqual({
-    //         include: [
-    //             'bin/**/*.{js,d.ts}',
-    //             'lib/**/*.{js,d.ts}'
-    //         ],
-    //         exclude: [
-    //             'dist/**/*',
-    //             'node_modules/**/*',
-    //             'bower_components/**/*',
-    //             'jspm_packages/**/*',
-    //             '.git/**/*'
-    //         ],
-    //         rootPath: path.join(__dirname, '..')
-    //     }, fileSpec);
-    // }
+    @test canMapMovedModuleRequireSpec() {
+        let testCases = [
+            {
+                // this is the source-map-support pattern. remove dist/
+                modulePath: './bin/tsc.js',
+                spec : '../dist/lib/index',
+                expected: '../lib/index',
+            },
+            {
+                // this is the "ts-node" pattern, copy as is.
+                modulePath: './bin/tsc.js',
+                spec: '../lib/test',
+                expected: '../lib/test'
+            },
+        ]
+        testCases.forEach((testCase) => {
+            assert.equal(config.moveModuleSpec(testCase.modulePath, testCase.spec), testCase.expected);
+        })
+    }
 
-    // @test canTestIncludedJsWatcherDirPaths() {
-    //     let fileSpec = watcherSpec.includeJsWatcherDirPaths();
-    //     console.log(`********* jsWatcher.dirPaths`, fileSpec);
-    //     assert.deepEqual(fileSpec, {
-    //         rootPath: path.join(__dirname, '..'),
-    //         include: [
-    //             path.join(__dirname, '..', 'bin'),
-    //             path.join(__dirname, '..', 'lib')
-    //         ],
-    //         exclude: [
-    //             path.join(__dirname, '..', 'dist'),
-    //             path.join(__dirname, '..', 'node_modules'),
-    //             path.join(__dirname, '..', 'bower_components'),
-    //             path.join(__dirname, '..', 'jspm_packages'),
-    //             path.join(__dirname, '..', '.git')
-    //         ]
-    //     })
-    // }
 
     @test canResolveJsWatcherFilePaths() {
         return finder.resolveJsWatcherFilePaths()

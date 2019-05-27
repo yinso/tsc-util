@@ -8,6 +8,14 @@ export function copyFile(fromPath : string, toPath : string) : Promise<void> {
         .then(() => fs.copyAsync(fromPath, toPath))
 }
 
+export function readFile(filePath : string) : Promise<string> {
+    return fs.readFileAsync(filePath, 'utf8');
+}
+
+export function writeFile(filePath : string, data : string) : Promise<void> {
+    return fs.writeFileAsync(filePath, data, 'utf8')
+}
+
 export function rmrf(filePath : string) : Promise<void> {
     return fs.removeAsync(filePath);
 }
