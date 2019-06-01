@@ -4,10 +4,11 @@ const yargs = require('yargs');
 // we need the bin field in package.json to refer to the dist/ version of
 // this script in order for below to work.
 // and we should not run this script directly.
+require('source-map-support/register');
 const main = require('../dist/lib/index');
+const log = require('../dist/lib/logger');
 // this line needs to be removed in production...
 // hmm...
-require('source-map-support/register');
 const argv = yargs
     .options({
         watch: {
@@ -25,5 +26,14 @@ const argv = yargs
     })
     .help()
     .argv;
-
-main.run(argv)
+const logger = new log.LogService({
+    scope: 'tsc-util',
+    logLevel: argv.logLevel || log.getDefaultLogLevel(),
+    transports: [
+        log.transports.make({ type: 'console' }),
+    ]
+})
+process.on('unhandledRejection', function (reason, p) {
+    console.log(`******* this is my unhandled rejection error`, reason, p)
+})
+main.run({ ...argv, logger })

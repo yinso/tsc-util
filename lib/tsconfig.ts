@@ -5,8 +5,21 @@ import * as path from 'path';
 import * as minimatch from 'minimatch';
 import * as vPath from './vpath';
 
+let _libMap : {[lib : string]: string }= {
+    es6: 'es2015',
+    es7: 'es2016'
+};
+
+function _mapLibName(lib : string) : string {
+    if (_libMap.hasOwnProperty(lib)) {
+        return _libMap[lib];
+    } else {
+        return lib;
+    }
+}
+
 function convertLibs(libs : string[]) : string[] {
-    return libs.map((lib) =>`lib.${lib}.d.ts`);
+    return libs.map((lib) =>`lib.${_mapLibName(lib)}.d.ts`);
 }
 
 function convertTarget(target : string) : ts.ScriptTarget {
@@ -15,8 +28,10 @@ function convertTarget(target : string) : ts.ScriptTarget {
             return ts.ScriptTarget.ES3;
         case 'es5':
             return ts.ScriptTarget.ES5;
+        case 'es6':
         case 'es2015':
             return ts.ScriptTarget.ES2015;
+        case 'es7':
         case 'es2016':
             return ts.ScriptTarget.ES2016;
         case 'es2017':
@@ -104,6 +119,11 @@ export class TsConfig {
         this._exclude = options.exclude;
         this._prevConfig = options.prevConfig;
     }
+
+    get configFilePath() : string {
+        return path.join(this.basePath, this.configName)
+    }
+
 
     get compilerOptions() : ts.CompilerOptions {
         if (this._prevConfig) {
@@ -229,7 +249,6 @@ export class TsConfig {
     isIgnoredPath(filePath : string) : boolean {
         let excluded = this.excludedDirs();
         for (var i = 0; i < excluded.length; ++i) {
-            // console.log(`******** isIgnoredPath-minimatch`, filePath, excluded[i], minimatch(filePath, excluded[i]))
             if (minimatch(filePath, excluded[i]))
                 return true
         }
@@ -260,14 +279,6 @@ export class TsConfig {
         let normalizedSpec = path.join(path.dirname(fullModulePath), spec); // from rootPath
         if (normalizedSpec.startsWith(this.outDir)) {
             let targetSpec = path.relative(path.dirname(targetModulePath), normalizedSpec)
-            // console.log(`*********** moveModuleSpec`, {
-            //     modulePath,
-            //     spec,
-            //     fullModulePath,
-            //     targetModulePath,
-            //     normalizedSpec,
-            //     targetSpec
-            // })
             return new vPath.PathObject(targetSpec).toVirtualPath();
         } else {
             return spec;

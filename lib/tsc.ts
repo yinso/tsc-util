@@ -5,6 +5,7 @@ import * as log from './logger';
 import * as finder from './tsconfig-finder';
 import * as U from './util';
 import * as watcher from './js-watcher';
+import * as vpath from './vpath';
 
 interface TscRunner {
     // this would just do one thing.
@@ -29,24 +30,47 @@ abstract class BaseTscRunner implements TscRunner {
 
     abstract run() : Promise<void>;
 
+    _reportSwitch(diagnostic : ts.Diagnostic, report : {[key: string]: any}) {
+        switch (diagnostic.category) {
+            case ts.DiagnosticCategory.Error:
+                this.logger.error({
+                    code : `TS${diagnostic.code}`,
+                    ...report
+                })
+                break;
+            case ts.DiagnosticCategory.Warning:
+                this.logger.warn({
+                    code : `TS${diagnostic.code}`,
+                    ...report
+                })
+                break;
+            default:
+                this.logger.info({
+                    code : `TS${diagnostic.code}`,
+                    ...report
+                })
+                break;
+        }
+    }
+
     protected _reportDiagnostic(diagnostic : ts.Diagnostic) {
+        let message = ts.flattenDiagnosticMessageText(
+            diagnostic.messageText,
+            "\n"
+        );
         if (diagnostic.file) {
             let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
                 diagnostic.start!
             );
-            let message = ts.flattenDiagnosticMessageText(
-                diagnostic.messageText,
-                "\n"
-            );
-            this.logger.error({
+            this._reportSwitch(diagnostic, {
                 fileName: diagnostic.file.fileName,
                 line,
                 character,
                 message
             })
         } else {
-            this.logger.error({
-                message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
+            this._reportSwitch(diagnostic, {
+                message
             })
         }
     }
@@ -54,7 +78,10 @@ abstract class BaseTscRunner implements TscRunner {
 
 class BatchTscRunner extends BaseTscRunner {
     constructor(options : TscRunnerOptions) {
-        super(options);
+        super({
+            ...options,
+            logger: options.logger.pushScope('BatchTscRunner')
+        });
         this._reportDiagnostics = this._reportDiagnostics.bind(this);
     }
 
@@ -68,15 +95,27 @@ class BatchTscRunner extends BaseTscRunner {
                 .concat(emitResult.diagnostics);
         })
         .then(this._reportDiagnostics)
+        .catch((e : Error) => {
+            this.logger.error({
+                scope: `_batchCompile`,
+                error: e
+            })
+        })
 
     }
 
-    private _batchJsAndDTs() : Promise<void> {
+    private _batchJsAndDts() : Promise<void> {
         if (this.config.rootPath !== this.config.outDir) {
             return this.finder.resolveJsWatcherFilePaths()
                 .then((declPaths) => {
                     return Promise.map(declPaths, (fromPath) => {
-                        return watcher.copyFile(this.config, fromPath)
+                        return watcher.copyFile(this.config, fromPath, this.logger)
+                            .catch((e : Error) => {
+                                this.logger.error({
+                                    scope: `_batchJsAndDts`,
+                                    error: e
+                                })
+                            })
                     })
                         .then(() => {})
                 })
@@ -88,7 +127,7 @@ class BatchTscRunner extends BaseTscRunner {
 
     run() : Promise<void> {
         return this._batchCompile()
-            .then(() => this._batchJsAndDTs())
+            .then(() => this._batchJsAndDts())
     }
 
     _reportDiagnostics(all : ts.Diagnostic[]) {
@@ -96,12 +135,11 @@ class BatchTscRunner extends BaseTscRunner {
     }
 }
 
-
 class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     private readonly _formatHost : ts.FormatDiagnosticsHost;
-    private _watchHost !: ts.WatchCompilerHostOfFilesAndCompilerOptions<T>;
+    private _watchHost !: ts.WatchCompilerHostOfConfigFile<T>;
     private _createProgram !: ts.CreateProgram<T>;
-    private _watchProgram !: ts.WatchOfFilesAndCompilerOptions<T>;
+    private _watchProgram !: ts.WatchOfConfigFile<T>;
     private _jsWatcher : watcher.JsWatcher;
     constructor(options : TscRunnerOptions) {
         super(options);
@@ -111,31 +149,30 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     }
 
     run() : Promise<void> {
-        return this.finder.resolveFilePaths()
-            .then((tsFiles) => {
-                this._createProgram = (ts.createEmitAndSemanticDiagnosticsBuilderProgram as any) as ts.CreateProgram<T>;
-                this._watchHost = ts.createWatchCompilerHost(tsFiles
-                    , this.config.compilerOptions
-                    , ts.sys
-                    , this._createProgram
-                    , this._reportDiagnostic
-                    , this._reportWatchStatusChanged)
-                
-                this._watchProgram = ts.createWatchProgram(this._watchHost);
-                return;
-            })
-            .then(() => this._jsWatcher.run())
+        this._createProgram = (ts.createEmitAndSemanticDiagnosticsBuilderProgram as any) as ts.CreateProgram<T>;
+        this._watchHost = ts.createWatchCompilerHost(this.config.configFilePath
+            , undefined
+            , ts.sys
+            , this._createProgram
+            , this._reportDiagnostic
+            , this._reportWatchStatusChanged)
+        
+        this._watchProgram = ts.createWatchProgram(this._watchHost);
+        return this._jsWatcher.run()
     }
 
     private _reportWatchStatusChanged(diagnostic: ts.Diagnostic) {
-        this.logger.info({
-            message: ts.formatDiagnostic(diagnostic, this._formatHost)
-        })
+        this._reportDiagnostic(diagnostic);
     }
 
     private _getFormatHost() : ts.FormatDiagnosticsHost {
         return {
-            getCanonicalFileName: (path : string) => path,
+            getCanonicalFileName: (path : string) => {
+                this.logger.info({
+                    getCanonicalFileName: path
+                })
+                return path
+            },
             getCurrentDirectory: ts.sys.getCurrentDirectory,
             getNewLine: () => ts.sys.newLine
         };
@@ -143,28 +180,26 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
 }
 
 export interface RunOptions {
+    logger : log.ILogService;
     watch ?: boolean;
-    logLevel ?: log.LogLevel;
 }
 
-export function run(options : RunOptions = {}) {
-    let logger = new log.LogService({
-        scope: 'tsc-util',
-        logLevel: options.logLevel || log.getDefaultLogLevel(),
-        transports: [
-            log.transports.make({ type: 'console' }),
-        ]
-    })
+export function run(options : RunOptions) {
     return tsConfig.loadConfig()
         .then((config) => {
             let runner = _createRunner({
                 watch : options.watch || false,
                 config,
-                logger
+                logger: options.logger
             });
             return runner.run();
         })
-        .catch(console.error)
+        .catch((error) => {
+            options.logger.error({
+                scope: `run`,
+                error
+            })
+        })
 }
 
 export interface CreateRunnerOptions {

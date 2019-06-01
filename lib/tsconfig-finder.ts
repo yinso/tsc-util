@@ -14,23 +14,30 @@ export interface IncludedFileSpec {
     exclude : string[];
 }
 
+interface IncludeFileSpecOptions {
+    useDefaultExclude ?: boolean;
+    allowTypes ?: string[];
+}
+
 export class TsConfigFinder {
     readonly config : tsconfig.TsConfig;
     constructor(options : TsConfigFinderOptions) {
         this.config = options.config;
     }
 
-    includedFileSpec(useDefaultExclude : boolean = true) : IncludedFileSpec {
-        let excluded = this.config.excluded.concat(useDefaultExclude ? this.config.defaultExclude() : []).map((exc) => {
+    includedFileSpec({ useDefaultExclude , allowTypes } : IncludeFileSpecOptions = {}) : IncludedFileSpec {
+        useDefaultExclude = useDefaultExclude === undefined ? true : useDefaultExclude;
+        let excluded = this.config.excluded.concat(useDefaultExclude ? this.config.defaultExclude() : []).map((spec) => {
             return new tcGlob.TsConfigGlob({
-                spec: exc,
+                spec,
                 basePath: this.config.rootPath
             })
         })
         let include = (this.config.include || this.config.files) ? (this.config.include || []).map((spec) => {
             return new tcGlob.TsConfigGlob({
                 spec,
-                basePath: this.config.rootPath
+                basePath: this.config.rootPath,
+                allowTypes
             })
         }).map((glob) => glob.toIncludeGlob()).concat(this.config.files || []) : this.config.defaultInclude();
         return {
@@ -50,11 +57,11 @@ export class TsConfigFinder {
     }
 
     resolveJsWatcherFilePaths() : Promise<string[]> {
-        let included = this.includedFileSpec(false);
-        return find([
-            '**/*.d.ts',
-            '**/*.js'
-        ], {
+        let included = this.includedFileSpec({
+            useDefaultExclude: false,
+            allowTypes: ['.d.ts', '.js']
+        });
+        return find(included.include, {
             cwd: this.config.rootPath,
             exclude: included.exclude,
             fullPath: true

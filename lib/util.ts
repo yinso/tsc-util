@@ -13,7 +13,8 @@ export function readFile(filePath : string) : Promise<string> {
 }
 
 export function writeFile(filePath : string, data : string) : Promise<void> {
-    return fs.writeFileAsync(filePath, data, 'utf8')
+    return fs.mkdirpAsync(path.dirname(filePath))
+        .then(() => fs.writeFileAsync(filePath, data, 'utf8'))
 }
 
 export function rmrf(filePath : string) : Promise<void> {

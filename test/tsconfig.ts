@@ -17,10 +17,11 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
             declaration: true,
             emitDecoratorMetadata: true,
             experimentalDecorators: true,
+            noEmitOnError: true,
             lib: [
                 'lib.es5.d.ts',
                 'lib.es2015.promise.d.ts',
-                'lib.es6.d.ts',
+                'lib.es2015.d.ts',
                 'lib.dom.d.ts',
             ],
             noImplicitAny: true,
@@ -34,6 +35,9 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
         return tsConfig.loadConfig()
             .then((c) => {
                 config = c;
+                assert.equal(path.join(__dirname, '..'), c.basePath)
+                assert.equal('tsconfig.json', config.configName);
+                assert.equal(path.join(__dirname, '..', 'tsconfig.json'), config.configFilePath)
                 assert.deepEqual(config.compilerOptions, expectedOptions)
                 assert.equal(path.join(__dirname, '..'), config.rootDir)
                 assert.equal(path.join(__dirname, '..', 'dist'), config.outDir)
@@ -76,7 +80,6 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
     @test canResolveFilePaths() {
         return finder.resolveFilePaths()
             .then((filePaths) => {
-                console.log(`****** resolveFilePaths`, filePaths)
                 assert.ok(filePaths.length > 0, 'Resolve should return files')
                 filePaths.forEach((filePath) => {
                     let outPath = config.toOutPath(filePath)
@@ -109,10 +112,9 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
     @test canResolveJsWatcherFilePaths() {
         return finder.resolveJsWatcherFilePaths()
             .then((filePaths) => {
-                console.log(`****** resolveJsDtsFilePaths`, filePaths)
                 assert.deepEqual(filePaths, [
-                    path.join(__dirname, '..', 'lib', 'test.d.ts'),
                     path.join(__dirname, '..', 'bin', 'tsc.js'),
+                    path.join(__dirname, '..', 'lib', 'test.d.ts'),
                     path.join(__dirname, '..', 'lib', 'test.js'),
                 ])
             })
@@ -120,7 +122,6 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
 
     @test canTestExcludedPaths() {
         let excluded = config.excluded;
-        console.log(`******** canTestExcluded`, excluded)
     }
 
     @test canTestExcludedDirs() {

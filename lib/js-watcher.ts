@@ -77,7 +77,7 @@ export class JsWatcher {
         });
         if (this._shouldWatchFile(filePath)) {
             // we should copy to destination.
-            copyFile(this.config, filePath).then(() => null)
+            copyFile(this.config, filePath, this.logger).then(() => null)
         } else {
             this._watcher.unwatch(filePath);
         }
@@ -96,7 +96,7 @@ export class JsWatcher {
         });
         if (this._shouldWatchFile(filePath)) {
             // we should copy to destination.
-            copyFile(this.config, filePath).then(() => null)
+            copyFile(this.config, filePath, this.logger).then(() => null)
         } else {
             this._watcher.unwatch(filePath);
         }
@@ -153,7 +153,7 @@ export class JsWatcher {
     }
 }
 
-export function copyFile(config : tsConfig.TsConfig, filePath : string) : Promise<void> {
+export function copyFile(config : tsConfig.TsConfig, filePath : string, logger : log.ILogService) : Promise<void> {
     let outPath = config.toOutPath(filePath);
     // what do I want to do? I want to read in the file and
     // then do some transformation.
@@ -184,7 +184,13 @@ export function copyFile(config : tsConfig.TsConfig, filePath : string) : Promis
             return mod.toString()
         })
         .then((data) => {
-            U.writeFile(outPath, data)
+            return U.writeFile(outPath, data)
+        })
+        .catch((e : Error) => {
+            logger.error({
+                scope: `copyFiles`,
+                error: e
+            })
         })
 }
 

@@ -3,6 +3,7 @@
     "target": "es5",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "noEmitOnError": true,
     "declaration": true,
     "rootDir": ".",
     "outDir": "dist",
@@ -16,17 +17,9 @@
     "noImplicitAny": true,
     "strict": true,
   },
-  // how to use include?
   "include": [
     "bin",
     "lib",
     "test"
   ]
-  // "include": [
-  //   "**/*"
-  // ],
-  // "exclude": [
-  //   "node_modules",
-  //   ".git"
-  // ]
 }
