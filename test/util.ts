@@ -9,7 +9,7 @@ import * as path from 'path';
         return find('**/*.ts', {
             cwd: path.join(__dirname, '..'),
             exclude: [
-                'node_modules/**/*'
+                '**/node_modules/**/*'
             ]
         })
             .then((filePaths) => {

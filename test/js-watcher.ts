@@ -1,26 +1,42 @@
-import { suite , test } from 'mocha-typescript';
+import { suite , test, timeout } from 'mocha-typescript';
 import * as J from '../lib/js-watcher';
 import * as C from '../lib/tsconfig';
 import * as L from '../lib/logger';
 import * as assert from 'assert';
 import * as path from 'path';
+import * as vpath from '../lib/vpath';
+import * as W from '../lib/watcher';
+import * as F from '../lib/tsconfig-finder';
 
-let watcher : J.JsWatcher;
-let watchSpec : J.JsWatcherFileSpec
+let config : C.TsConfig;
+let logger : L.ILogService;
+let watchSpec : J.JsWatcherFileSpec;
+let finder : F.TsConfigFinder;
 
 @suite class JsWatcherFileSpecTest {
     @test canCreateJsWatcherFileSpec() {
         return C.loadConfig()
-            .then((config) => {
+            .then((conf) => {
+                config = conf;
                 watchSpec = new J.JsWatcherFileSpec({ config })
+                finder = new F.TsConfigFinder({ config })
+                logger = new L.LogService({
+                    logLevel: 'debug',
+                    transports: [
+                        L.transports.make({ type : 'console' })
+                    ]
+                })
             })
     }
 
     @test canGetIncludedDirs() {
         assert.deepEqual(watchSpec.includeDirs(), [
-            path.join(__dirname, '..', 'bin'),
-            path.join(__dirname, '..', 'lib'),
-            path.join(__dirname, '..', 'test'),
+            vpath.join(__dirname, '..', 'bin', '**/*.js').toVirtualPath(),
+            vpath.join(__dirname, '..', 'bin', '**/*.d.ts').toVirtualPath(),
+            vpath.join(__dirname, '..', 'lib', '**/*.js').toVirtualPath(),
+            vpath.join(__dirname, '..', 'lib', '**/*.d.ts').toVirtualPath(),
+            vpath.join(__dirname, '..', 'test', '**/*.js').toVirtualPath(),
+            vpath.join(__dirname, '..', 'test', '**/*.d.ts').toVirtualPath(),
         ])
     }
 
@@ -36,23 +52,32 @@ let watchSpec : J.JsWatcherFileSpec
     }
 }
 
+let watcherMap : J.JsDtsWatcherMap;
+let watcher : W.Watcher;
+
 @suite class JsWatcherTest {
 
     @test canCreateWatcher() {
-        return C.loadConfig()
-            .then((config) => {
-                let logger = new L.LogService({
-                    //logLevel: 'debug',
-                    transports: [
-                        L.transports.make({ type : 'console' })
-                    ]
-                })
-                // watcher = new J.JsWatcher({
-                //     config,
-                //     logger
-                // })
-                // return watcher;
-            })
+        watcherMap = new J.JsDtsWatcherMap({
+            config,
+            logger
+        })
+        assert.ok(watcherMap)
+        watcher = new W.Watcher({ logger })
+        assert.ok(watcher)
     }
 
+    @timeout(3000)
+    @test canRunWatcher() {
+        watcher.watch(watcherMap)
+        return W.WatcherMonitor.monitorWatcher({
+            watcher,
+            logger,
+            timeout: 500
+        })
+    }
+
+    @test canCloseWatcher() {
+        watcher.close();
+    }
 }

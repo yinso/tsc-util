@@ -4,8 +4,9 @@ import * as tsConfig from './tsconfig';
 import * as log from './logger';
 import * as finder from './tsconfig-finder';
 import * as U from './util';
-import * as watcher from './js-watcher';
+import * as js from './js-watcher';
 import * as vpath from './vpath';
+import * as W from './watcher';
 
 interface TscRunner {
     // this would just do one thing.
@@ -77,12 +78,14 @@ abstract class BaseTscRunner implements TscRunner {
 }
 
 class BatchTscRunner extends BaseTscRunner {
+    readonly jsDtsWatcherMap : js.JsDtsWatcherMap;
     constructor(options : TscRunnerOptions) {
         super({
             ...options,
             logger: options.logger.pushScope('BatchTscRunner')
         });
         this._reportDiagnostics = this._reportDiagnostics.bind(this);
+        this.jsDtsWatcherMap = new js.JsDtsWatcherMap(options);
     }
 
     private _batchCompile() : Promise<void> {
@@ -106,19 +109,7 @@ class BatchTscRunner extends BaseTscRunner {
 
     private _batchJsAndDts() : Promise<void> {
         if (this.config.rootPath !== this.config.outDir) {
-            return this.finder.resolveJsWatcherFilePaths()
-                .then((declPaths) => {
-                    return Promise.map(declPaths, (fromPath) => {
-                        return watcher.copyFile(this.config, fromPath, this.logger)
-                            .catch((e : Error) => {
-                                this.logger.error({
-                                    scope: `_batchJsAndDts`,
-                                    error: e
-                                })
-                            })
-                    })
-                        .then(() => {})
-                })
+            return this.jsDtsWatcherMap.runBatch();
         } else {
             return Promise.resolve();
         }
@@ -140,25 +131,29 @@ class WatchTscRunner<T extends ts.BuilderProgram> extends BaseTscRunner {
     private _watchHost !: ts.WatchCompilerHostOfConfigFile<T>;
     private _createProgram !: ts.CreateProgram<T>;
     private _watchProgram !: ts.WatchOfConfigFile<T>;
-    private _jsWatcher : watcher.JsWatcher;
+    private _jsDtsWatcherMap : js.JsDtsWatcherMap;
+    private _watcher : W.Watcher;
     constructor(options : TscRunnerOptions) {
         super(options);
         this._formatHost = this._getFormatHost();
         this._reportWatchStatusChanged = this._reportWatchStatusChanged.bind(this);
-        this._jsWatcher = new watcher.JsWatcher(options);
+        this._jsDtsWatcherMap = new js.JsDtsWatcherMap(options);
+        this._watcher = new W.Watcher(options);
     }
 
     run() : Promise<void> {
-        this._createProgram = (ts.createEmitAndSemanticDiagnosticsBuilderProgram as any) as ts.CreateProgram<T>;
-        this._watchHost = ts.createWatchCompilerHost(this.config.configFilePath
-            , undefined
-            , ts.sys
-            , this._createProgram
-            , this._reportDiagnostic
-            , this._reportWatchStatusChanged)
-        
-        this._watchProgram = ts.createWatchProgram(this._watchHost);
-        return this._jsWatcher.run()
+        return new Promise((resolve, reject) => {
+            this._createProgram = (ts.createEmitAndSemanticDiagnosticsBuilderProgram as any) as ts.CreateProgram<T>;
+            this._watchHost = ts.createWatchCompilerHost(this.config.configFilePath
+                , undefined
+                , ts.sys
+                , this._createProgram
+                , this._reportDiagnostic
+                , this._reportWatchStatusChanged)
+            
+            this._watchProgram = ts.createWatchProgram(this._watchHost);
+            this._watcher.watch(this._jsDtsWatcherMap);
+        })
     }
 
     private _reportWatchStatusChanged(diagnostic: ts.Diagnostic) {
@@ -187,7 +182,7 @@ export interface RunOptions {
 export function run(options : RunOptions) {
     return tsConfig.loadConfig()
         .then((config) => {
-            let runner = _createRunner({
+            let runner = makeRunner({
                 watch : options.watch || false,
                 config,
                 logger: options.logger
@@ -208,7 +203,7 @@ export interface CreateRunnerOptions {
     config : tsConfig.TsConfig;
 }
 
-function _createRunner(options : CreateRunnerOptions) {
+export function makeRunner(options : CreateRunnerOptions) {
     if (options.watch) {
         return new WatchTscRunner(options);
     } else {

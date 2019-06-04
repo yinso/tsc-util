@@ -114,8 +114,8 @@ let watcherSpec : jsWatcher.JsWatcherFileSpec;
             .then((filePaths) => {
                 assert.deepEqual(filePaths, [
                     path.join(__dirname, '..', 'bin', 'tsc.js'),
-                    path.join(__dirname, '..', 'lib', 'test.d.ts'),
-                    path.join(__dirname, '..', 'lib', 'test.js'),
+                    path.join(__dirname, '..', 'lib', 'anymatch.d.ts'),
+                    path.join(__dirname, '..', 'lib', 'anymatch.js'),
                 ])
             })
     }

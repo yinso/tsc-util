@@ -109,6 +109,24 @@ export class TsConfigGlob {
         }
     }
 
+    toJsWatcherDirPaths(useFullPath : boolean = true) : string[] {
+        if (this.isDirectorySpec()) {
+            return [ '.js', '.d.ts' ].map((extname) => {
+                let dirPath = this._useFullPath(this.spec.toVirtualPath(), useFullPath, true);
+                return `${dirPath}/**/*${extname}`;
+            })
+        } else if (this.isWildCardSpec()) {
+            // wildcard spec ends in *, and or could be a directory.
+            // strip out the parts that are mean
+            return [ '.js', '.d.ts' ].map((extname) => {
+                let dirPath = this._useFullPath(this._stripWildCard(), useFullPath, true);
+                return `${dirPath}/**/*${extname}`;
+            });
+        } else { // if this is a file - what do we do? return itself.
+            return [ this._useFullPath(this.spec.toVirtualPath(), useFullPath, true) ];
+        }
+    }
+
     private _toExcludeGlob() : string {
         if (this.isDirectorySpec()) {
             return `${this.spec.toVirtualPath()}/**/*`;
